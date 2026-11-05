@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Прогон конфигураций на наборе вопросов: ./run_all.sh <questions> <gold> <out_dir> <config>...
+# Прогон конфигураций на наборе вопросов: ./run_all.sh <questions> <out_dir> <config>...
 set -e
-Q=$1; G=$2; OUT=$3; shift 3
+Q=$1; OUT=$2; shift 2
 mkdir -p "$OUT"
 for cfg in "$@"; do
   name=$(basename "$cfg" .json)

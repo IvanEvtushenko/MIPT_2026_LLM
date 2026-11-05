@@ -1,0 +1,8 @@
+name,answer_accuracy,Q,mean_input_tokens,mean_output_tokens,mean_llm_calls,mean_cost,median_latency_ms
+no_context,0.800,,300,169,1.00,1232,5063
+rag_simple,0.667,0.649,1711,258,1.00,2998,9476
+final,0.800,0.750,2300,280,1.07,3692,11379
+ablation_no_formula_norm,0.800,0.762,2893,371,1.33,4718,9975
+ablation_no_context_expansion,0.800,0.749,2436,358,1.27,4191,9968
+ablation_no_adaptive,0.800,0.750,2148,263,1.00,3455,9444
+final_planner,0.867,0.834,2585,366,2.13,4597,12371
