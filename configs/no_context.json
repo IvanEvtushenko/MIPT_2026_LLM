@@ -14,7 +14,7 @@
   },
   "retrieval": {
     "math_normalization": true,
-    "per_option_queries": false,
+    "per_option_queries": true,
     "dense": true,
     "bm25_k": 30,
     "dense_k": 30,
@@ -24,7 +24,8 @@
     "context_blocks": 6,
     "neighbors": true,
     "neighbor_top": 3,
-    "context_tokens": 3500
+    "context_tokens": 3500,
+    "references": true
   },
   "adaptive": {
     "enabled": false,

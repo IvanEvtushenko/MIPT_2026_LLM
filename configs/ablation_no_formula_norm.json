@@ -1,0 +1,37 @@
+{
+  "runtime": "../runtime.json",
+  "mode": "final",
+  "embedding": {
+    "model": "BAAI/bge-m3",
+    "revision": "5617a9f61b028005a4858fdac845db406aefb181",
+    "max_length": 512,
+    "batch_size": 16
+  },
+  "reranker": {
+    "model": "BAAI/bge-reranker-v2-m3",
+    "revision": "953dc6f6f85a1b2dbfca4c34a2796e7dde08d41e",
+    "max_length": 512
+  },
+  "retrieval": {
+    "math_normalization": false,
+    "per_option_queries": true,
+    "dense": true,
+    "bm25_k": 30,
+    "dense_k": 30,
+    "rrf_k": 60,
+    "rerank": false,
+    "rerank_top": 30,
+    "context_blocks": 6,
+    "neighbors": true,
+    "neighbor_top": 3,
+    "context_tokens": 3500,
+    "references": true
+  },
+  "adaptive": {
+    "enabled": true,
+    "retry_blocks": 5
+  },
+  "citations_max": 3,
+  "rationale_max_chars": 1200,
+  "planner": false
+}

@@ -10,7 +10,7 @@ import json
 import re
 from dataclasses import dataclass
 
-import fitz
+import pymupdf
 
 CMEX = {
     "\x00": "(", "\x01": ")", "\x02": "[", "\x03": "]", "\x08": "{", "\t": "}", "\x0c": "|",
@@ -151,8 +151,23 @@ def join_tight(items):
     return out
 
 
+def bind_word_limits(items, base):
+    """Пределы под словами-операторами прямого шрифта (lim, res, max): привязать к концу слова."""
+    words = [it for it in items if not it.small and it.font.startswith("CMR") and it.text.isalpha()]
+    for it in items:
+        if it.small and it.op is None and it.base - base > 4.0:
+            host = next((w for w in words if w.x0 - 3.5 <= it.cx <= w.x1 + 1), None)
+            if host is None:
+                continue
+            k = words.index(host)
+            while k + 1 < len(words) and words[k + 1].x0 - words[k].x1 < 0.8:
+                k += 1
+            it.op = words[k]
+
+
 def assemble_line(items, base):
     items = sorted(items, key=lambda it: it.x0)
+    bind_word_limits(items, base)
     out, prev, run = "", None, []
 
     def flush():
@@ -219,7 +234,7 @@ def linearize(items):
 
 def apply_rules(items, rules):
     for x0, x1, y in rules:
-        span = [it for it in items if x0 - 0.5 <= it.cx <= x1 + 0.5 and not it.free]
+        span = [it for it in items if x0 - 0.5 <= it.cx <= x1 + 0.5 and not it.free and not it.font.startswith("F")]
         num = [it for it in span if y - 6.5 <= it.base <= y - 1.2]
         den = [it for it in span if y + 6.0 <= it.base <= y + 13.5]
         under = [it for it in span if y + 3.5 <= it.base <= y + 9.5]
@@ -258,7 +273,9 @@ def apply_rules(items, rules):
 
 
 def clean(text):
-    text = text.replace("̸=", "≠").replace("̸∈", "∉").replace("̸", "")
+    text = re.sub("\u0338\\s*=", "≠", text)
+    text = re.sub("\u0338\\s*∈", "∉", text).replace("\u0338", "").replace("\u02d9", " ")
+    text = re.sub(r"\s+", " ", text)
     text = re.sub(r"(\w)- (\w)", lambda m: m.group(1) + m.group(2) if m.group(2).islower() else m.group(0), text)
     text = re.sub(r"\s+", " ", text)
     text = re.sub(r" ([,.;:)])", r"\1", text)
@@ -291,7 +308,7 @@ HEAD_RE = re.compile(r"^(Теорема|Определение|Лемма|Сле
 
 
 def build(pdf_path, max_chars):
-    doc = fitz.open(pdf_path)
+    doc = pymupdf.open(pdf_path)
     margin = 43.7
     blocks, section, subsection = [], "", ""
     for pno in range(1, doc.page_count):
