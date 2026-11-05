@@ -43,7 +43,7 @@ python evaluate.py --answers answers.jsonl --trace trace.jsonl --questions data/
 | Поиск, эмбеддинги | только CPU (AMD Ryzen 5 5600X, 6 ядер), 32 GB RAM |
 | LLM | отдельно, RTX 3060 12 GB через vLLM |
 | Модели поиска | `BAAI/bge-m3` (568M), ревизия `5617a9f6…`; реранкер `BAAI/bge-reranker-v2-m3` (568M) заявлен, но в итоговой конфигурации выключен |
-| Сборка индекса | BUILD_TIME, пиковая RAM PEAK_RAM, размер индекса INDEX_SIZE |
+| Сборка индекса | 7 мин (415 с, из них почти всё — эмбеддинги двух вариантов текста), пиковая RAM 3.1 GB, размер индекса 19 MB |
 | Ответ на вопрос | медиана LATENCY |
 
 ## Архитектура

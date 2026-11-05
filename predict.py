@@ -1,11 +1,12 @@
 """Ответы на вопросы: questions.jsonl -> answers.jsonl и trace.jsonl.
 
 Режимы (config.mode): no_context, rag_simple (один поиск, один вызов), final
-(план поиска -> поиск -> ответ -> при нехватке фрагментов повторный поиск и ответ).
+(поиск -> ответ -> при нехватке фрагментов повторный поиск и второй ответ; планировщик запросов опционален).
 """
 import argparse
 import json
 import os
+import re
 import time
 
 import requests
@@ -16,6 +17,18 @@ from rag import Index, build_context, fmt_block, load_jsonl
 
 def option_ids(q):
     return [str(o["id"]) for o in q["options"]]
+
+
+MISSING_RE = re.compile(r"(в|во) фрагмент\w* (нет|не )|нет (в|во) фрагмент|фрагмент\w* не (содерж|привод|указ|да)|"
+                        r"не (приведен|указан|найден|описан)\w* (в|во) фрагмент", re.I)
+
+
+def missing_options(res, q):
+    """Варианты, отвергнутые с пояснением, что во фрагментах нет нужного: повод для повторного поиска."""
+    valid = option_ids(q)
+    return [str(c.get("id")).strip() for c in res.get("checks") or []
+            if isinstance(c, dict) and c.get("ok") is not True and str(c.get("id", "")).strip() in valid
+            and MISSING_RE.search(str(c.get("why", "")))]
 
 
 def checked_ids(res, q):
@@ -93,15 +106,19 @@ def run_question(q, index, llm, cfg, rt):
             if mode == "final" and cfg["adaptive"]["enabled"]:
                 need = str((res or {}).get("need_search") or "").strip()
                 unresolved = res is None or bool(res.get("abstain")) or not checked_ids(res, q)
+                lacking = missing_options(res, q) if res else []
                 if res is None:
                     action, why = "retry", "ответ не разобран как JSON"
                 elif need:
                     action, why = "research", f"во фрагментах не хватает: {need}"
+                elif lacking:
+                    action, why = "research", f"для вариантов {', '.join(lacking)} модель не нашла опоры во фрагментах"
                 else:
                     action, why = "stop", "ответ получен" if not unresolved else "отказ по условию вопроса"
                 decisions.append({"step": "after_answer", "action": action, "reason": why})
                 if action == "research":
-                    new = index.search([need], rc)
+                    texts = {o["id"]: o["text"] for o in q["options"]}
+                    new = index.search([need] if need else [q["question"] + "\n" + texts[i] for i in lacking], rc)
                     fresh = [i for i in new if index.blocks[i]["block_id"] not in shown][:cfg["adaptive"]["retry_blocks"]]
                     res, _ = answer(fresh + [i for i in ranked if i not in fresh])
                 elif action == "retry":

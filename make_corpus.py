@@ -25,7 +25,7 @@ MSBM = {"C": "ℂ", "D": "𝔻", "T": "𝕋", "R": "ℝ", "Z": "ℤ", "S": "𝕊
 TEXT_FIX = {"\x15": "–", "\x16": "—", "\x01": "", "џ": "§", "Ѕ": "«", "“": "»"}
 HEADER_BASE = 40.0
 # высота глифа CMEX в em: origin висит над базовой линией на (высота / 2 + ось 0.25 em)
-CMEX_EM = {**dict.fromkeys("\x00\x01\x02\x03\x08\tno p", 1.2), **dict.fromkeys("\x10\x11q", 1.8),
+CMEX_EM = {**dict.fromkeys("\x00\x01\x02\x03\x08\tnop", 1.2), **dict.fromkeys("\x10\x11q", 1.8),
            **dict.fromkeys("\x12\x13\x14\x15\x1a\x1b\x1er", 2.4), **dict.fromkeys(" !\"#()s", 3.0),
            **dict.fromkeys("XY[\\", 1.4), **dict.fromkeys("ZI", 2.22), **dict.fromkeys("PQST", 1.0),
            **dict.fromkeys("RH", 1.11), "\x0c": 0.6}
@@ -251,19 +251,17 @@ def apply_rules(items, rules):
             new = Item(text, x0, x1, y + 2.5, max(it.size for it in members), "ATOM")
         elif under and not num:
             rad = [it for it in items if it.text == "√" and abs(it.x1 - x0) < 3 and it not in under]
-            members = [it for it in span if y + 1.0 <= it.base <= y + 12 and (not it.small or it in under or True)]
-            members = [it for it in members if it in under or it.small]
+            members = [it for it in span if it in under or (it.small and y + 1.0 <= it.base <= y + 12)]
             body = linearize(members)
             if rad:
                 text = f"√({body})" if not simple(body) else f"√{body}"
                 members += rad[:1]
                 x0 = rad[0].x0
             elif len(body) == 1:
-                text = body + "̄"
+                text = body + "\u0304"
             else:
                 text = "\\overline{" + body + "}"
-            base = min(under, key=lambda it: it.size).base if under else y + 6
-            base = max((it.base for it in under if not it.small), default=base)
+            base = max((it.base for it in under if not it.small), default=min(under, key=lambda it: it.size).base)
             new = Item(text, x0, x1, base, max(it.size for it in members), "ATOM")
         else:
             continue
@@ -326,7 +324,6 @@ def build(pdf_path, max_chars):
                 t = ln["rest"]
                 ln = {**ln, "x0": margin + 12, "math": 0.0, "font": "F41"}
             indent = ln["x0"] - margin
-            display = ln["math"] > 0.6 and indent > 16
             new_par = (8 <= indent <= 16 and ln["math"] < 0.6) or (ln["font"] == "F50" and HEAD_RE.match(t))
             sec = section + (" / " + subsection if subsection else "")
             if new_par or not paras or paras[-1] is None:
