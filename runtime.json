@@ -1,0 +1,18 @@
+{
+  "model": "Qwen/Qwen3.5-4B",
+  "revision": "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+  "access": {
+    "api": "OpenAI-compatible Chat Completions",
+    "env": {"base_url": "LLM_BASE_URL", "model": "LLM_MODEL", "api_key": "LLM_API_KEY", "submission_id": "SUBMISSION_ID"},
+    "headers": ["X-Question-ID", "X-Submission-ID"],
+    "dev_endpoint": "http://127.0.0.1:8000/v1",
+    "dev_server": "vllm serve Qwen/Qwen3.5-4B --revision 851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a --served-model-name Qwen/Qwen3.5-4B --max-model-len 8192 --language-model-only --dtype bfloat16 --gpu-memory-utilization 0.80 --max-num-seqs 8 --seed 0"
+  },
+  "thinking": false,
+  "sampling": {"temperature": 0.0, "top_p": 1.0, "presence_penalty": 0.0, "seed": 42},
+  "max_tokens": 1024,
+  "quantization": "none (bf16 weights, vLLM 0.33.0)",
+  "limits": {"max_calls": 4, "max_input_tokens": 16384, "max_output_tokens": 4096, "max_request_tokens": 8192},
+  "timeouts": {"request_seconds": 180, "retries": 2},
+  "resources": {"llm": "1x GPU, 12 GB VRAM", "retrieval": "CPU only, peak RAM < 8 GB"}
+}
