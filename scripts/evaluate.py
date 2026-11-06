@@ -5,9 +5,12 @@ import json
 import os
 import statistics
 
-from rag import load_jsonl
-
 LIMITS = {"llm_calls": 4, "input_tokens": 16384, "output_tokens": 4096}
+
+
+def load_jsonl(path):
+    with open(path, encoding="utf-8") as f:
+        return [json.loads(line) for line in f if line.strip()]
 
 
 def format_errors(answers, questions, block_ids=None):

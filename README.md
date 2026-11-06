@@ -21,8 +21,8 @@ python predict.py --index ./index --questions /path/to/questions.jsonl --output 
 Эксперименты: прогон конфигураций из `configs/` (`configs/final.json` совпадает с `config.json`), затем оценка и строка для `experiments.csv`:
 
 ```bash
-./run_all.sh data/dev_questions.jsonl runs/dev configs/*.json
-python evaluate.py --answers runs/dev/final_answers.jsonl --trace runs/dev/final_trace.jsonl \
+scripts/run_all.sh data/dev_questions.jsonl runs/dev configs/*.json
+python scripts/evaluate.py --answers runs/dev/final_answers.jsonl --trace runs/dev/final_trace.jsonl \
   --questions data/dev_questions.jsonl --gold data/dev_gold.jsonl --corpus data/corpus.jsonl [--c-ref 2998] [--name final]
 ```
 
@@ -30,8 +30,8 @@ python evaluate.py --answers runs/dev/final_answers.jsonl --trace runs/dev/final
 
 Комплекта с корпусом и вопросами не выдавали, поэтому оба собираются из исходников скриптами:
 
-- `make_corpus.py` строит `corpus.jsonl` из PDF учебника (sha256 `629f4b66…`): `python make_corpus.py --pdf Л_ТФКП_Горяйнов_Половинкин_2025.pdf --output data/corpus.jsonl`. Сам корпус в репозиторий не входит.
-- `make_dev.py` строит `data/dev_questions.jsonl` и `data/dev_gold.jsonl` из `tfkp_15_qa.md`. Допустимые наборы источников заданы якорями «страница + начало блока» и разрешаются в `block_id` по корпусу.
+- `scripts/make_corpus.py` строит `corpus.jsonl` из PDF учебника (sha256 `629f4b66…`): `python scripts/make_corpus.py --pdf Л_ТФКП_Горяйнов_Половинкин_2025.pdf --output data/corpus.jsonl`. Сам корпус в репозиторий не входит.
+- `scripts/make_dev.py` строит `data/dev_questions.jsonl` и `data/dev_gold.jsonl` из `tfkp_15_qa.md`. Допустимые наборы источников заданы якорями «страница + начало блока» и разрешаются в `block_id` по корпусу.
 
 ### LLM для разработки
 
@@ -63,8 +63,8 @@ python evaluate.py --answers runs/dev/final_answers.jsonl --trace runs/dev/final
 | --- | --- |
 | `build_index.py`, `predict.py` | CLI из задания |
 | `rag.py`, `textnorm.py`, `llm.py` | поиск, нормализация формул, клиент LLM и промпты |
-| `make_corpus.py`, `make_dev.py` | сборка корпуса из PDF и dev-набора из QA-пар |
-| `evaluate.py`, `run_all.sh` | проверка формата и оценка, прогон конфигураций |
+| `scripts/make_corpus.py`, `scripts/make_dev.py` | сборка корпуса из PDF и dev-набора из QA-пар |
+| `scripts/evaluate.py`, `scripts/run_all.sh` | проверка формата и оценка, прогон конфигураций |
 | `config.json`, `runtime.json`, `configs/` | итоговая конфигурация, параметры LLM, конфигурации экспериментов |
 | `data/dev_questions.jsonl`, `data/dev_gold.jsonl` | открытый набор из `tfkp_15_qa.md` |
 | `dev_answers.jsonl`, `dev_trace.jsonl` | итоговый прогон открытого набора |
