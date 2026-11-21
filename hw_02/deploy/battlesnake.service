@@ -1,0 +1,18 @@
+[Unit]
+Description=Battlesnake server
+After=network-online.target
+
+[Service]
+ExecStart=/opt/battlesnake/server -http :8443 -https :443 -host 144-31-186-202.sslip.io -cache /var/lib/battlesnake/certs
+WorkingDirectory=/opt/battlesnake
+DynamicUser=yes
+StateDirectory=battlesnake
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+Restart=always
+RestartSec=2
+Nice=5
+MemoryMax=300M
+Environment=GOMAXPROCS=1 GOGC=200
+
+[Install]
+WantedBy=multi-user.target
