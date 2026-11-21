@@ -23,6 +23,7 @@ type Params struct {
 	UseTT     int // 1 — кэшировать позиции
 	DrawP     int // вероятность (в %), что соперник тоже пойдёт на клетку лобового столкновения равных
 	DrawPen   int // цена ничьей (взаимной гибели) для нас
+	FoodOwn   int // за каждую еду на нашей территории сверх чужой, когда голодны или короче
 }
 
 var DefaultParams = Params{
@@ -530,6 +531,17 @@ func (se *Searcher) Eval(st *State) int {
 	if !g.Constrictor {
 		if foodDist < 99 && (int(me.Health) < p.Hungry || dl < p.LenWant) {
 			score -= p.FoodDist * foodDist
+		}
+		if p.FoodOwn != 0 && (int(me.Health) < p.Hungry || dl < p.LenWant) {
+			oppFood := 0
+			for j := 1; j < n; j++ {
+				if st.Snakes[j].Alive {
+					if c := st.Food.And(owned[j]).Count(); c > oppFood {
+						oppFood = c
+					}
+				}
+			}
+			score += p.FoodOwn * (st.Food.And(owned[0]).Count() - oppFood)
 		}
 		if foodDist < 99 && foodDist > int(me.Health) {
 			score -= p.Starve
