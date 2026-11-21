@@ -27,6 +27,8 @@ type Agent interface {
 }
 
 var (
+	causeMu  sync.Mutex
+	causes   = map[string]int{}
 	moveMs   = flag.Int("ms", 40, "время на ход для нашей змейки, мс")
 	nodes    = flag.Int64("nodes", 0, "лимит узлов на ход вместо времени")
 	httpTO   = flag.Int("httptimeout", 500, "timeout в запросе к внешним змейкам, мс")
@@ -174,14 +176,36 @@ func play(mode string, agents []Agent, seed int64) ([]int, int) {
 			}
 		}
 		was := make([]bool, n)
+		next := make([]int, n)
+		hp := make([]int, n)
 		for i := 0; i < n; i++ {
 			was[i] = st.Snakes[i].Alive
+			if was[i] {
+				next[i] = g.Nbr(st.Snakes[i].Head(), int(moves[i]))
+				hp[i] = int(st.Snakes[i].Health)
+			}
 		}
 		g.Step(st, &moves)
 		rules.After(g, st, rng)
 		for i := 0; i < n; i++ {
 			if was[i] && !st.Snakes[i].Alive {
 				death[i] = int(st.Turn)
+				cause := "body"
+				switch {
+				case next[i] < 0:
+					cause = "wall"
+				case hp[i] <= 1 || g.Hazard[next[i]] > 0 && hp[i] <= 15:
+					cause = "starve"
+				default:
+					for j := 0; j < n; j++ {
+						if j != i && was[j] && next[j] == next[i] {
+							cause = "h2h"
+						}
+					}
+				}
+				causeMu.Lock()
+				causes[fmt.Sprintf("%p %s", agents[i], cause)]++
+				causeMu.Unlock()
 			}
 		}
 	}
@@ -328,6 +352,12 @@ func main() {
 			verdict += " REJECT"
 		}
 	}
+	ca, cb := "", ""
+	for _, c := range []string{"wall", "body", "h2h", "starve"} {
+		ca += fmt.Sprintf(" %s=%d", c, causes[fmt.Sprintf("%p %s", A, c)])
+		cb += fmt.Sprintf(" %s=%d", c, causes[fmt.Sprintf("%p %s", B, c)])
+	}
+	fmt.Printf("DEATHS A:%s | B:%s\n", ca, cb)
 	fmt.Printf("RESULT %s vs %s mode=%s n=%d W%d D%d L%d score=%.3f±%.3f elo=%+.0f [%+.0f,%+.0f] turns=%.0f %.0fs%s\n",
 		*a, *b, *mode, cnt, w, d, l, s, se, elo(s), elo(s-se), elo(s+se), float64(turns)/float64(cnt), time.Since(t0).Seconds(), verdict)
 }

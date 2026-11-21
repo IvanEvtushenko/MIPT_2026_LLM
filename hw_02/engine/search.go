@@ -24,11 +24,13 @@ type Params struct {
 	DrawP     int // вероятность (в %), что соперник тоже пойдёт на клетку лобового столкновения равных
 	DrawPen   int // цена ничьей (взаимной гибели) для нас
 	FoodOwn   int // за каждую еду на нашей территории сверх чужой, когда голодны или короче
+	TTMin     int // кэш только на узлах с глубиной не меньше этой
+	BFSBreak  int // 1 — останавливать BFS, когда рядом не осталось освобождающихся клеток
 }
 
 var DefaultParams = Params{
 	Terr: 10, Len: 40, LenCap: 4, LenExtra: 5, LenWant: 2, Hungry: 35, FoodDist: 6,
-	Starve: 3000, Trap: 60, Health: 1, HazardPen: 5, Kill: 600, MaxAdv: 2, DrawOK: 1500, UseTT: 1, DrawP: 100, DrawPen: 800,
+	Starve: 3000, Trap: 60, Health: 1, HazardPen: 5, Kill: 600, MaxAdv: 2, DrawOK: 1500, UseTT: 1, DrawP: 100, DrawPen: 800, TTMin: 2, BFSBreak: 1,
 }
 
 const (
@@ -196,7 +198,8 @@ func (se *Searcher) maxNode(st *State, depth, ply, alpha, beta int) int {
 	var key uint64
 	ttMove := -1
 	alpha0 := alpha
-	if se.TT != nil {
+	useTT := se.TT != nil && depth >= se.P.TTMin
+	if useTT {
 		key = st.Hash()
 		if e := se.TT.probe(key); e != nil {
 			ttMove = int(e.move)
@@ -245,7 +248,7 @@ func (se *Searcher) maxNode(st *State, depth, ply, alpha, beta int) int {
 			break
 		}
 	}
-	if se.TT != nil {
+	if useTT {
 		flag := int8(ttExact)
 		if best <= alpha0 {
 			flag = ttUpper
@@ -270,7 +273,8 @@ func (se *Searcher) minNode(st *State, pkey uint64, m int8, depth, ply, alpha, b
 	var key uint64
 	ttPack := -1
 	beta0 := beta
-	if se.TT != nil {
+	useTT := se.TT != nil && depth >= se.P.TTMin && (pkey != 0 || se.P.TTMin < 2)
+	if useTT {
 		key = pkey ^ Z.move[m]
 		if e := se.TT.probe(key); e != nil {
 			ttPack = int(e.move)
@@ -373,7 +377,7 @@ func (se *Searcher) minNode(st *State, pkey uint64, m int8, depth, ply, alpha, b
 			best = (best*(100-se.P.DrawP) + draw*se.P.DrawP) / 100
 		}
 	}
-	if se.TT != nil {
+	if useTT {
 		flag := int8(ttExact)
 		if best >= beta0 {
 			flag = ttLower
@@ -418,6 +422,7 @@ func (se *Searcher) Eval(st *State) int {
 	var freeAt [maxFree]BB
 	blocked := st.Occ.Or(g.Static)
 	claimed := BB{}
+	var pending BB
 	maxT := 0
 	if !g.Constrictor {
 		var seen BB
@@ -436,6 +441,7 @@ func (se *Searcher) Eval(st *State) int {
 				t := L - k
 				if t < maxFree {
 					freeAt[t].Set(c)
+					pending.Set(c)
 					if t > maxT {
 						maxT = t
 					}
@@ -456,6 +462,7 @@ func (se *Searcher) Eval(st *State) int {
 	for d := 1; d < 64; d++ {
 		if d < maxFree {
 			blocked = blocked.AndNot(freeAt[d])
+			pending = pending.AndNot(freeAt[d])
 		}
 		avail := g.Full.AndNot(blocked).AndNot(claimed)
 		var exp [MaxSnakes]BB
@@ -497,7 +504,7 @@ func (se *Searcher) Eval(st *State) int {
 		if foodDist == 99 && !exp[0].And(st.Food).Zero() {
 			foodDist = d
 		}
-		if !grew && d >= maxT {
+		if !grew && (d >= maxT || se.P.BFSBreak == 1 && g.Neighbors(claimed).And(pending).Zero()) {
 			break
 		}
 	}
