@@ -20,17 +20,19 @@ type Params struct {
 	Kill      int // за каждого выбывшего соперника (режимы на 4)
 	MaxAdv    int // сколько ближайших соперников перебирать честно (режимы на 4)
 	DrawOK    int // соперник идёт на взаимную гибель, только если без неё наш перевес больше этого
+	UseTT     int // 1 — кэшировать позиции
+	DrawP     int // вероятность (в %), что соперник тоже пойдёт на клетку лобового столкновения равных
+	DrawPen   int // цена ничьей (взаимной гибели) для нас
 }
 
 var DefaultParams = Params{
 	Terr: 10, Len: 40, LenCap: 4, LenExtra: 5, LenWant: 2, Hungry: 35, FoodDist: 6,
-	Starve: 3000, Trap: 60, Health: 1, HazardPen: 5, Kill: 600, MaxAdv: 2, DrawOK: 1500,
+	Starve: 3000, Trap: 60, Health: 1, HazardPen: 5, Kill: 600, MaxAdv: 2, DrawOK: 1500, UseTT: 1, DrawP: 100, DrawPen: 800,
 }
 
 const (
 	WinScore  = 1_000_000
 	LossScore = -1_000_000
-	DrawScore = -100
 	maxFree   = 32
 )
 
@@ -41,6 +43,7 @@ type Searcher struct {
 	Deadline time.Time
 	MaxNodes int64
 	Nodes    int64
+	TT       *TT
 	stop     bool
 	adv      []int
 	others   []int
@@ -105,6 +108,14 @@ func (se *Searcher) Search(st *State, maxDepth int) Result {
 		res.Depth = 0
 		return res
 	}
+	if se.P.UseTT == 1 && se.TT == nil {
+		se.TT = GetTT()
+		defer func() { PutTT(se.TT); se.TT = nil }()
+	}
+	var rootKey uint64
+	if se.TT != nil {
+		rootKey = st.Hash()
+	}
 	order := make([]int8, n)
 	copy(order, mv[:n])
 	scores := make([]int, n)
@@ -113,7 +124,7 @@ func (se *Searcher) Search(st *State, maxDepth int) Result {
 		alpha := LossScore - 1
 		complete := true
 		for k, m := range order {
-			v := se.minNode(st, m, depth, 1, alpha, WinScore+1)
+			v := se.minNode(st, rootKey, m, depth, 1, alpha, WinScore+1)
 			if se.stop {
 				complete = false
 				break
@@ -160,7 +171,7 @@ func (se *Searcher) terminal(st *State, ply int) (int, bool) {
 	}
 	if !me.Alive {
 		if opp == 0 {
-			return DrawScore, true
+			return -se.P.DrawPen, true
 		}
 		return LossScore + ply*100 - opp*10, true
 	}
@@ -181,15 +192,50 @@ func (se *Searcher) maxNode(st *State, depth, ply, alpha, beta int) int {
 	if depth == 0 {
 		return se.Eval(st)
 	}
+	var key uint64
+	ttMove := -1
+	alpha0 := alpha
+	if se.TT != nil {
+		key = st.Hash()
+		if e := se.TT.probe(key); e != nil {
+			ttMove = int(e.move)
+			if int(e.depth) >= depth {
+				v := int(e.val)
+				switch e.flag {
+				case ttExact:
+					return v
+				case ttLower:
+					if v > alpha {
+						alpha = v
+					}
+				case ttUpper:
+					if v < beta {
+						beta = v
+					}
+				}
+				if alpha >= beta {
+					return v
+				}
+			}
+		}
+	}
 	mv, n := se.G.SafeMoves(st, 0)
-	best := LossScore - 1
+	if ttMove >= 0 {
+		for k := 1; k < n; k++ {
+			if int(mv[k]) == ttMove {
+				mv[0], mv[k] = mv[k], mv[0]
+				break
+			}
+		}
+	}
+	best, bestM := LossScore-1, mv[0]
 	for k := 0; k < n; k++ {
-		v := se.minNode(st, mv[k], depth, ply, alpha, beta)
+		v := se.minNode(st, key, mv[k], depth, ply, alpha, beta)
 		if se.stop {
 			return 0
 		}
 		if v > best {
-			best = v
+			best, bestM = v, mv[k]
 		}
 		if v > alpha {
 			alpha = v
@@ -198,17 +244,53 @@ func (se *Searcher) maxNode(st *State, depth, ply, alpha, beta int) int {
 			break
 		}
 	}
+	if se.TT != nil {
+		flag := int8(ttExact)
+		if best <= alpha0 {
+			flag = ttUpper
+		} else if best >= beta {
+			flag = ttLower
+		}
+		se.TT.store(key, best, depth, flag, uint8(bestM))
+	}
 	return best
 }
 
 // minNode перебирает совместные ходы ближайших соперников при нашем ходе m.
-func (se *Searcher) minNode(st *State, m int8, depth, ply, alpha, beta int) int {
+func (se *Searcher) minNode(st *State, pkey uint64, m int8, depth, ply, alpha, beta int) int {
 	g := se.G
 	var moves [MaxSnakes]int8
 	moves[0] = m
 	for _, j := range se.others {
 		if st.Snakes[j].Alive {
 			moves[j] = se.greedy(st, j)
+		}
+	}
+	var key uint64
+	ttPack := -1
+	beta0 := beta
+	if se.TT != nil {
+		key = pkey ^ Z.move[m]
+		if e := se.TT.probe(key); e != nil {
+			ttPack = int(e.move)
+			if int(e.depth) >= depth {
+				v := int(e.val)
+				switch e.flag {
+				case ttExact:
+					return v
+				case ttLower:
+					if v > alpha {
+						alpha = v
+					}
+				case ttUpper:
+					if v < beta {
+						beta = v
+					}
+				}
+				if alpha >= beta {
+					return v
+				}
+			}
 		}
 	}
 	var lists [MaxSnakes][4]int8
@@ -229,16 +311,29 @@ func (se *Searcher) minNode(st *State, m int8, depth, ply, alpha, beta int) int 
 				}
 			}
 		}
+		if ttPack >= 0 {
+			want := int8(ttPack >> (2 * na) & 3)
+			for k := 1; k < c; k++ {
+				if l[k] == want {
+					copy(l[1:k+1], l[0:k])
+					l[0] = want
+					break
+				}
+			}
+		}
 		lists[na], cnt[na] = l, c
 		advAlive[na] = j
 		na++
 	}
 	best := WinScore + 1
+	bestPack := 0
 	sawDraw := false
 	var idx [MaxSnakes]int
 	for {
+		pack := 0
 		for a := 0; a < na; a++ {
 			moves[advAlive[a]] = lists[a][idx[a]]
+			pack |= int(lists[a][idx[a]]) << (2 * a)
 		}
 		child := *st
 		g.Step(&child, &moves)
@@ -246,16 +341,16 @@ func (se *Searcher) minNode(st *State, m int8, depth, ply, alpha, beta int) int 
 		if se.stop {
 			return 0
 		}
-		if v == DrawScore && !child.Snakes[0].Alive {
+		if v == -se.P.DrawPen && !child.Snakes[0].Alive {
 			sawDraw = true
 		} else if v < best {
-			best = v
+			best, bestPack = v, pack
 		}
 		if v < beta {
 			beta = v
 		}
 		if alpha >= beta {
-			return best
+			break
 		}
 		// следующая комбинация
 		a := 0
@@ -270,8 +365,21 @@ func (se *Searcher) minNode(st *State, m int8, depth, ply, alpha, beta int) int 
 			break
 		}
 	}
-	if sawDraw && (best > se.P.DrawOK || best == WinScore+1) && DrawScore < best {
-		best = DrawScore
+	if draw := -se.P.DrawPen; sawDraw && draw < best {
+		if best > se.P.DrawOK || best == WinScore+1 {
+			best = draw
+		} else {
+			best = (best*(100-se.P.DrawP) + draw*se.P.DrawP) / 100
+		}
+	}
+	if se.TT != nil {
+		flag := int8(ttExact)
+		if best >= beta0 {
+			flag = ttLower
+		} else if best <= alpha {
+			flag = ttUpper
+		}
+		se.TT.store(key, best, depth, flag, uint8(bestPack))
 	}
 	return best
 }
@@ -423,8 +531,10 @@ func (se *Searcher) Eval(st *State) int {
 		if foodDist < 99 && (int(me.Health) < p.Hungry || dl < p.LenWant) {
 			score -= p.FoodDist * foodDist
 		}
-		if !st.Food.Zero() && foodDist > int(me.Health) {
+		if foodDist < 99 && foodDist > int(me.Health) {
 			score -= p.Starve
+		} else if foodDist == 99 && !st.Food.Zero() && int(me.Health) < p.Hungry {
+			score -= p.FoodDist * (20 + p.Hungry - int(me.Health))
 		}
 		score += p.Health * int(me.Health) / 10
 	}

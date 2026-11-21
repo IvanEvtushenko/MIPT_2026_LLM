@@ -148,7 +148,7 @@ func newAgent(spec string) Agent {
 	panic("unknown agent " + spec)
 }
 
-// play возвращает места змеек (1 — лучшее; одинаковые места при одновременном выбывании) и число ходов.
+// play возвращает ход выбывания каждой змейки (1<<30 — дожила до конца) и число ходов.
 func play(mode string, agents []Agent, seed int64) ([]int, int) {
 	rng := rand.New(rand.NewSource(seed))
 	botRng := rand.New(rand.NewSource(seed ^ 0x5eed))
@@ -188,22 +188,23 @@ func play(mode string, agents []Agent, seed int64) ([]int, int) {
 	for i, a := range agents {
 		a.End(g, st, i, rules, gameID)
 	}
-	places := make([]int, n)
-	for i := 0; i < n; i++ {
-		places[i] = 1
-		for j := 0; j < n; j++ {
-			if death[j] > death[i] {
-				places[i]++
-			}
-		}
-	}
-	return places, int(st.Turn)
+	return death, int(st.Turn)
 }
 
-// score — результат первой змейки в [0,1]: 1 — первое место, 0 — последнее.
-func score(places []int, i int) float64 {
-	n := len(places)
-	return float64(n-places[i]) / float64(n-1)
+// score — результат змейки i в [0,1] по ходу выбывания: +1 за каждого, кто выбыл раньше, +0.5 за одновременных.
+func score(death []int, i int) float64 {
+	s := 0.0
+	for j := range death {
+		if j == i {
+			continue
+		}
+		if death[j] < death[i] {
+			s++
+		} else if death[j] == death[i] {
+			s += 0.5
+		}
+	}
+	return s / float64(len(death)-1)
 }
 
 func elo(s float64) float64 {
