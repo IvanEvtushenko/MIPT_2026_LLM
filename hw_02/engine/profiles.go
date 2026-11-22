@@ -15,11 +15,11 @@ func init() {
 	Profiles["duel"] = d
 	// royale: при опасной зоне держим здоровье высоким (85/6: +78 Эло к исходным, 95/10: ещё +49, по 300 игр)
 	r := DefaultParams
-	r.RHungry, r.RHealth = 95, 10
+	r.RHungry, r.RHealth, r.Hungry = 95, 10, 85
 	Profiles["royale"] = r
-	// standard на 4: ищем еду, когда здоровье ниже 85 (+63 Эло, 300 игр)
+	// standard на 4: ищем еду, когда здоровье ниже 95 (85: +63 Эло к исходным, 95: ещё +49, по 300 игр)
 	sd := DefaultParams
-	sd.Hungry = 85
+	sd.Hungry = 95
 	Profiles["standard"] = sd
 	// constrictor: честно перебираем только ближайшего соперника (+13 Эло, 1500 игр)
 	c := DefaultParams
