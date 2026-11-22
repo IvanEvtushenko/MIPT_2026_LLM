@@ -13,10 +13,14 @@ func init() {
 	d := DefaultParams
 	d.LenWant, d.DrawPen, d.LenCap, d.Ext = 4, 400, 6, 2
 	Profiles["duel"] = d
-	// royale: при опасной зоне держим здоровье высоким (локально +78 Эло, 300 игр)
+	// royale: при опасной зоне держим здоровье высоким (85/6: +78 Эло к исходным, 95/10: ещё +49, по 300 игр)
 	r := DefaultParams
-	r.RHungry, r.RHealth = 85, 6
+	r.RHungry, r.RHealth = 95, 10
 	Profiles["royale"] = r
+	// standard на 4: ищем еду, когда здоровье ниже 85 (+63 Эло, 300 игр)
+	sd := DefaultParams
+	sd.Hungry = 85
+	Profiles["standard"] = sd
 	// constrictor: честно перебираем только ближайшего соперника (+13 Эло, 1500 игр)
 	c := DefaultParams
 	c.MaxAdv = 1
