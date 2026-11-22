@@ -6,26 +6,30 @@ import (
 
 // Params — веса оценки позиции; их подбирает локальный hill-climbing.
 type Params struct {
-	Terr      int // за клетку территории (кто раньше дойдёт)
-	Len       int // за единицу разницы длин в пределах LenCap
-	LenCap    int
-	LenExtra  int // за единицу разницы длин сверх LenCap
-	LenWant   int // хотим быть длиннее соперника хотя бы на столько
-	Hungry    int // порог здоровья, ниже которого ищем еду
-	FoodDist  int // штраф за шаг до ближайшей своей еды, когда голодны или короче
-	Starve    int // штраф, если до еды не дотянуть по здоровью
-	Trap      int // за клетку нехватки места относительно длины
-	Health    int // за единицу здоровья (важно в royale)
-	HazardPen int // штраф за свою клетку территории в опасной зоне, в десятых долях клетки
-	Kill      int // за каждого выбывшего соперника (режимы на 4)
-	MaxAdv    int // сколько ближайших соперников перебирать честно (режимы на 4)
-	DrawOK    int // соперник идёт на взаимную гибель, только если без неё наш перевес больше этого
-	UseTT     int // 1 — кэшировать позиции
-	DrawP     int // вероятность (в %), что соперник тоже пойдёт на клетку лобового столкновения равных
-	DrawPen   int // цена ничьей (взаимной гибели) для нас
-	FoodOwn   int // за каждую еду на нашей территории сверх чужой, когда голодны или короче
-	TTMin     int // кэш только на узлах с глубиной не меньше этой
-	BFSBreak  int // 1 — останавливать BFS, когда рядом не осталось освобождающихся клеток
+	Terr        int // за клетку территории (кто раньше дойдёт)
+	Len         int // за единицу разницы длин в пределах LenCap
+	LenCap      int
+	LenExtra    int // за единицу разницы длин сверх LenCap
+	LenWant     int // хотим быть длиннее соперника хотя бы на столько
+	Hungry      int // порог здоровья, ниже которого ищем еду
+	FoodDist    int // штраф за шаг до ближайшей своей еды, когда голодны или короче
+	Starve      int // штраф, если до еды не дотянуть по здоровью
+	Trap        int // за клетку нехватки места относительно длины
+	Health      int // за единицу здоровья (важно в royale)
+	HazardPen   int // штраф за свою клетку территории в опасной зоне, в десятых долях клетки
+	Kill        int // за каждого выбывшего соперника (режимы на 4)
+	MaxAdv      int // сколько ближайших соперников перебирать честно (режимы на 4)
+	DrawOK      int // соперник идёт на взаимную гибель, только если без неё наш перевес больше этого
+	UseTT       int // 1 — кэшировать позиции
+	DrawP       int // вероятность (в %), что соперник тоже пойдёт на клетку лобового столкновения равных
+	DrawPen     int // цена ничьей (взаимной гибели) для нас
+	FoodOwn     int // за каждую еду на нашей территории сверх чужой, когда голодны или короче
+	TTMin       int // кэш только на узлах с глубиной не меньше этой
+	BFSBreak    int // 1 — останавливать BFS, когда рядом не осталось освобождающихся клеток
+	Ext         int // сколько раз на линии продлевать перебор на ход, когда головы рядом
+	OtherDanger int // штраф на первом ходу за клетку рядом с головой не перебираемого соперника не короче нас
+	RHungry     int // порог голода, когда на доске есть опасная зона (royale); 0 — как Hungry
+	RHealth     int // вес здоровья при опасной зоне; 0 — как Health
 }
 
 var DefaultParams = Params{
@@ -119,6 +123,17 @@ func (se *Searcher) Search(st *State, maxDepth int) Result {
 	if se.TT != nil {
 		rootKey = st.Hash()
 	}
+	var danger BB
+	if se.P.OtherDanger > 0 {
+		for _, j := range se.others {
+			o := &st.Snakes[j]
+			if o.Alive && o.Len >= me.Len {
+				var hm BB
+				hm.Set(o.Head())
+				danger = danger.Or(g.Neighbors(hm))
+			}
+		}
+	}
 	order := make([]int8, n)
 	copy(order, mv[:n])
 	scores := make([]int, n)
@@ -127,10 +142,13 @@ func (se *Searcher) Search(st *State, maxDepth int) Result {
 		alpha := LossScore - 1
 		complete := true
 		for k, m := range order {
-			v := se.minNode(st, rootKey, m, depth, 1, alpha, WinScore+1)
+			v := se.minNode(st, rootKey, m, depth, 1, se.P.Ext, alpha, WinScore+1)
 			if se.stop {
 				complete = false
 				break
+			}
+			if danger.Has(g.Nbr(me.Head(), int(m))) && v > LossScore+1000 {
+				v -= se.P.OtherDanger
 			}
 			scores[k] = v
 			if v > best {
@@ -184,7 +202,7 @@ func (se *Searcher) terminal(st *State, ply int) (int, bool) {
 	return 0, false
 }
 
-func (se *Searcher) maxNode(st *State, depth, ply, alpha, beta int) int {
+func (se *Searcher) maxNode(st *State, depth, ply, ext, alpha, beta int) int {
 	se.Nodes++
 	if se.timeUp() {
 		return 0
@@ -193,7 +211,10 @@ func (se *Searcher) maxNode(st *State, depth, ply, alpha, beta int) int {
 		return v
 	}
 	if depth == 0 {
-		return se.Eval(st)
+		if ext <= 0 || !se.headsClose(st) {
+			return se.Eval(st)
+		}
+		depth, ext = 1, ext-1
 	}
 	var key uint64
 	ttMove := -1
@@ -234,7 +255,7 @@ func (se *Searcher) maxNode(st *State, depth, ply, alpha, beta int) int {
 	}
 	best, bestM := LossScore-1, mv[0]
 	for k := 0; k < n; k++ {
-		v := se.minNode(st, key, mv[k], depth, ply, alpha, beta)
+		v := se.minNode(st, key, mv[k], depth, ply, ext, alpha, beta)
 		if se.stop {
 			return 0
 		}
@@ -261,7 +282,7 @@ func (se *Searcher) maxNode(st *State, depth, ply, alpha, beta int) int {
 }
 
 // minNode перебирает совместные ходы ближайших соперников при нашем ходе m.
-func (se *Searcher) minNode(st *State, pkey uint64, m int8, depth, ply, alpha, beta int) int {
+func (se *Searcher) minNode(st *State, pkey uint64, m int8, depth, ply, ext, alpha, beta int) int {
 	g := se.G
 	var moves [MaxSnakes]int8
 	moves[0] = m
@@ -342,7 +363,7 @@ func (se *Searcher) minNode(st *State, pkey uint64, m int8, depth, ply, alpha, b
 		}
 		child := *st
 		g.Step(&child, &moves)
-		v := se.maxNode(&child, depth-1, ply+1, alpha, beta)
+		v := se.maxNode(&child, depth-1, ply+1, ext, alpha, beta)
 		if se.stop {
 			return 0
 		}
@@ -387,6 +408,17 @@ func (se *Searcher) minNode(st *State, pkey uint64, m int8, depth, ply, alpha, b
 		se.TT.store(key, best, depth, flag, uint8(bestPack))
 	}
 	return best
+}
+
+// headsClose: голова кого-то из перебираемых соперников не дальше двух клеток от нашей.
+func (se *Searcher) headsClose(st *State) bool {
+	h := st.Snakes[0].Head()
+	for _, j := range se.adv {
+		if st.Snakes[j].Alive && se.G.Dist(h, st.Snakes[j].Head()) <= 2 {
+			return true
+		}
+	}
+	return false
 }
 
 // greedy — простой ход для соперника вне перебора: безопасный ход с наибольшим числом свободных соседей.
@@ -535,11 +567,24 @@ func (se *Searcher) Eval(st *State) int {
 		cl = -p.LenCap
 	}
 	score += p.Len*cl + p.LenExtra*(dl-cl)
+	hungry, healthW := p.Hungry, p.Health
+	if !g.HazardBB.Zero() {
+		if p.RHungry > 0 {
+			hungry = p.RHungry
+		}
+		if p.RHealth > 0 {
+			healthW = p.RHealth
+		}
+	}
 	if !g.Constrictor {
-		if foodDist < 99 && (int(me.Health) < p.Hungry || dl < p.LenWant) {
+		hp := int(me.Health)
+		if g.HazardBB.Has(me.Head()) && g.HazardDamage > 0 {
+			hp = hp / (1 + g.HazardDamage) // столько ходов проживём, оставаясь в зоне
+		}
+		if foodDist < 99 && (int(me.Health) < hungry || dl < p.LenWant) {
 			score -= p.FoodDist * foodDist
 		}
-		if p.FoodOwn != 0 && (int(me.Health) < p.Hungry || dl < p.LenWant) {
+		if p.FoodOwn != 0 && (int(me.Health) < hungry || dl < p.LenWant) {
 			oppFood := 0
 			for j := 1; j < n; j++ {
 				if st.Snakes[j].Alive {
@@ -550,12 +595,12 @@ func (se *Searcher) Eval(st *State) int {
 			}
 			score += p.FoodOwn * (st.Food.And(owned[0]).Count() - oppFood)
 		}
-		if foodDist < 99 && foodDist > int(me.Health) {
+		if foodDist < 99 && foodDist > hp {
 			score -= p.Starve
-		} else if foodDist == 99 && !st.Food.Zero() && int(me.Health) < p.Hungry {
-			score -= p.FoodDist * (20 + p.Hungry - int(me.Health))
+		} else if foodDist == 99 && !st.Food.Zero() && int(me.Health) < hungry {
+			score -= p.FoodDist * (20 + hungry - int(me.Health))
 		}
-		score += p.Health * int(me.Health) / 10
+		score += healthW * int(me.Health) / 10
 	}
 	if myT/10 < myL {
 		score -= p.Trap * (myL - myT/10)

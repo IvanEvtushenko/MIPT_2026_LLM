@@ -18,10 +18,9 @@ import (
 )
 
 var (
-	params = engine.DefaultParams
-	mu     sync.Mutex
-	games  = map[string]*gameInfo{}
-	stats  = map[string]*[3]int{} // режим -> победы, поражения, ничьи
+	mu    sync.Mutex
+	games = map[string]*gameInfo{}
+	stats = map[string]*[3]int{} // режим -> победы, поражения, ничьи
 )
 
 type gameInfo struct {
@@ -93,7 +92,8 @@ func move(w http.ResponseWriter, r *http.Request) {
 	}
 	mv, depth, nodes := "up", 0, int64(0)
 	if g, st, ok := engine.Build(&req); ok {
-		se := &engine.Searcher{G: g, P: &params, Deadline: t0.Add(budget)}
+		p := engine.Profiles[engine.ModeOf(req.Game.Ruleset.Name, len(req.Board.Snakes))]
+		se := &engine.Searcher{G: g, P: &p, Deadline: t0.Add(budget)}
 		res := se.Search(st, 60)
 		mv, depth, nodes = engine.MoveNames[res.Move], res.Depth, res.Nodes
 	} else {
@@ -181,8 +181,11 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		if err := json.Unmarshal(b, &params); err != nil {
-			log.Fatal(err)
+		for m, p := range engine.Profiles {
+			if err := json.Unmarshal(b, &p); err != nil {
+				log.Fatal(err)
+			}
+			engine.Profiles[m] = p
 		}
 	}
 	mux := http.NewServeMux()
