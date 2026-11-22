@@ -107,9 +107,15 @@ func (a *httpAgent) End(g *engine.Geom, st *engine.State, i int, rules *engine.R
 	a.mu.Unlock()
 }
 
-// parseParams: «Terr=12,Len=30» или путь к JSON поверх весов по умолчанию.
+// parseParams: «Terr=12,Len=30» или путь к JSON поверх весов по умолчанию;
+// «@duel:Terr=12» — поверх профиля режима.
 func parseParams(spec string) engine.Params {
 	p := engine.DefaultParams
+	if strings.HasPrefix(spec, "@") {
+		name, rest, _ := strings.Cut(spec[1:], ":")
+		p = engine.Profiles[name]
+		spec = rest
+	}
 	if spec == "" {
 		return p
 	}
@@ -144,8 +150,8 @@ func newAgent(spec string) Agent {
 		return &botAgent{kind: spec[4:]}
 	case spec == "eng":
 		return &engAgent{p: engine.DefaultParams}
-	case strings.HasPrefix(spec, "eng:"):
-		return &engAgent{p: parseParams(spec[4:])}
+	case strings.HasPrefix(spec, "eng:"), strings.HasPrefix(spec, "eng@"):
+		return &engAgent{p: parseParams(strings.TrimPrefix(spec[3:], ":"))}
 	}
 	panic("unknown agent " + spec)
 }
